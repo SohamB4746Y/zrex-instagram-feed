@@ -58,8 +58,13 @@ class _HomeFeedScreenState extends ConsumerState<HomeFeedScreen> {
             }
 
             final postIndex = index - 1;
+
+            // Trigger pagination 2 posts before the end. Schedule after the
+            // current build frame to avoid mutating Riverpod state during build.
             if (postIndex >= posts.length - 2) {
-              ref.read(feedProvider.notifier).loadMore();
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) ref.read(feedProvider.notifier).loadMore();
+              });
             }
 
             if (postIndex >= posts.length) {
