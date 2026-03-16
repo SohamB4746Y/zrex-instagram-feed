@@ -64,7 +64,7 @@ class PostRepositoryImpl implements IPostRepository {
 
   static const _imageBaseUrls = ['https://picsum.photos/seed/'];
 
-  String _postImageUrl(int seed, {int width = 1080, int height = 1350}) {
+  String _postImageUrl(int seed, {int width = 600, int height = 750}) {
     return '${_imageBaseUrls[0]}post_$seed/$width/$height';
   }
 

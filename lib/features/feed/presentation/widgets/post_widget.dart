@@ -71,30 +71,112 @@ class _PostHeader extends StatelessWidget {
   }
 }
 
-class _PostMedia extends StatelessWidget {
+class _PostMedia extends ConsumerStatefulWidget {
   final Post post;
 
   const _PostMedia({required this.post});
 
   @override
-  Widget build(BuildContext context) {
-    if (post.imageUrls.length > 1) {
-      return _CarouselMedia(imageUrls: post.imageUrls);
+  ConsumerState<_PostMedia> createState() => _PostMediaState();
+}
+
+class _PostMediaState extends ConsumerState<_PostMedia>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _heartCtrl;
+  bool _heartVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _heartCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 750),
+    )..addStatusListener((s) {
+        if (s == AnimationStatus.completed && mounted) {
+          setState(() => _heartVisible = false);
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _heartCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onDoubleTap() {
+    if (!widget.post.isLiked) {
+      ref.read(feedProvider.notifier).toggleLike(widget.post.id);
     }
-    return PinchZoomOverlay(
-      child: AspectRatio(
-        aspectRatio: 4 / 5,
-        child: CachedNetworkImage(
-          imageUrl: post.imageUrls.first,
-          fit: BoxFit.cover,
-          placeholder: (_, p) => Container(color: AppColors.shimmerBase),
-          errorWidget: (_, e, st) => Container(
-            color: AppColors.shimmerBase,
-            child: const Icon(Icons.broken_image, size: 48),
-          ),
-        ),
+    setState(() => _heartVisible = true);
+    _heartCtrl.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = widget.post.imageUrls.length > 1
+        ? _CarouselMedia(imageUrls: widget.post.imageUrls)
+        : PinchZoomOverlay(
+            child: AspectRatio(
+              aspectRatio: 4 / 5,
+              child: CachedNetworkImage(
+                imageUrl: widget.post.imageUrls.first,
+                fit: BoxFit.cover,
+                placeholder: (_, p) =>
+                    Container(color: AppColors.shimmerBase),
+                errorWidget: (_, e, st) => Container(
+                  color: AppColors.shimmerBase,
+                  child: const Icon(Icons.broken_image, size: 48),
+                ),
+              ),
+            ),
+          );
+
+    return GestureDetector(
+      onDoubleTap: _onDoubleTap,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          media,
+          if (_heartVisible)
+            IgnorePointer(
+              child: AnimatedBuilder(
+                animation: _heartCtrl,
+                builder: (context, _) {
+                  final t = _heartCtrl.value;
+                  final scale = _heartScale(t);
+                  final opacity = _heartOpacity(t);
+                  return Transform.scale(
+                    scale: scale,
+                    child: Opacity(
+                      opacity: opacity,
+                      child: const Icon(
+                        Icons.favorite,
+                        color: Colors.white,
+                        size: 96,
+                        shadows: [Shadow(color: Colors.black38, blurRadius: 12)],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
       ),
     );
+  }
+
+  static double _heartScale(double t) {
+    if (t < 0.3) return (t / 0.3) * 1.2;
+    if (t < 0.5) return 1.2 - ((t - 0.3) / 0.2) * 0.2;
+    if (t < 0.72) return 1.0;
+    return 1.0 - ((t - 0.72) / 0.28);
+  }
+
+  static double _heartOpacity(double t) {
+    if (t < 0.15) return t / 0.15;
+    if (t < 0.68) return 1.0;
+    return 1.0 - ((t - 0.68) / 0.32);
   }
 }
 
@@ -190,23 +272,61 @@ class _CarouselMediaState extends State<_CarouselMedia> {
   }
 }
 
-class _PostActions extends ConsumerWidget {
+class _PostActions extends ConsumerStatefulWidget {
   final Post post;
 
   const _PostActions({required this.post});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_PostActions> createState() => _PostActionsState();
+}
+
+class _PostActionsState extends ConsumerState<_PostActions>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _likeCtrl;
+  late final Animation<double> _likeScale;
+
+  @override
+  void initState() {
+    super.initState();
+    _likeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _likeScale = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.45), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 1.45, end: 0.85), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 0.85, end: 1.0), weight: 30),
+    ]).animate(CurvedAnimation(parent: _likeCtrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() {
+    _likeCtrl.dispose();
+    super.dispose();
+  }
+
+  void _toggleLike() {
+    ref.read(feedProvider.notifier).toggleLike(widget.post.id);
+    _likeCtrl.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => ref.read(feedProvider.notifier).toggleLike(post.id),
-            child: Icon(
-              post.isLiked ? Icons.favorite : Icons.favorite_border,
-              size: 28,
-              color: post.isLiked ? AppColors.heartRed : AppColors.black,
+            onTap: _toggleLike,
+            child: ScaleTransition(
+              scale: _likeScale,
+              child: Icon(
+                widget.post.isLiked ? Icons.favorite : Icons.favorite_border,
+                size: 28,
+                color:
+                    widget.post.isLiked ? AppColors.heartRed : AppColors.black,
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -221,9 +341,10 @@ class _PostActions extends ConsumerWidget {
           ),
           const Spacer(),
           GestureDetector(
-            onTap: () => ref.read(feedProvider.notifier).toggleSave(post.id),
+            onTap: () =>
+                ref.read(feedProvider.notifier).toggleSave(widget.post.id),
             child: Icon(
-              post.isSaved ? Icons.bookmark : Icons.bookmark_border,
+              widget.post.isSaved ? Icons.bookmark : Icons.bookmark_border,
               size: 28,
             ),
           ),

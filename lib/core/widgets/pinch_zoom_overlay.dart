@@ -88,7 +88,7 @@ class _PinchZoomOverlayState extends State<PinchZoomOverlay>
 
     _overlayEntry = OverlayEntry(
       builder: (context) {
-        return AnimatedBuilder(
+        return _SnapBackOverlay(
           animation: _snapBackAnimation,
           rect: rect,
           child: widget.child,
@@ -184,30 +184,12 @@ class _ZoomOverlayWidgetState extends State<_ZoomOverlayWidget> {
   }
 }
 
-class AnimatedBuilder extends StatelessWidget {
-  final Animation<Matrix4> animation;
+/// Animates the zoomed image back to its original position via a matrix snap-back.
+class _SnapBackOverlay extends AnimatedWidget {
   final Rect rect;
   final Widget child;
 
-  const AnimatedBuilder({
-    super.key,
-    required this.animation,
-    required this.rect,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder2(animation: animation, rect: rect, child: child);
-  }
-}
-
-class AnimatedBuilder2 extends AnimatedWidget {
-  final Rect rect;
-  final Widget child;
-
-  const AnimatedBuilder2({
-    super.key,
+  const _SnapBackOverlay({
     required Animation<Matrix4> animation,
     required this.rect,
     required this.child,
