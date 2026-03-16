@@ -73,4 +73,4 @@ flutter test
 ## Notes for Submission
 
 - This repository includes all requested deliverables except the demo video.
-- Replace this line with your final public GitHub URL after publishing.
+- Public repository: https://github.com/SohamB4746Y/zrex-instagram-feed
