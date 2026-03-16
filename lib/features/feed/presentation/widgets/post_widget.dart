@@ -114,9 +114,22 @@ class _PostMediaState extends ConsumerState<_PostMedia>
 
   @override
   Widget build(BuildContext context) {
-    final media = widget.post.imageUrls.length > 1
-        ? _CarouselMedia(imageUrls: widget.post.imageUrls)
-        : PinchZoomOverlay(
+    final isCarousel = widget.post.imageUrls.length > 1;
+
+    // The double-tap callback is threaded into PinchZoomOverlay so that both
+    // scale gestures and double-tap are handled by a SINGLE GestureDetector,
+    // eliminating arena conflicts between nested detectors.
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        if (isCarousel)
+          _CarouselMedia(
+            imageUrls: widget.post.imageUrls,
+            onDoubleTap: _onDoubleTap,
+          )
+        else
+          PinchZoomOverlay(
+            onDoubleTap: _onDoubleTap,
             child: AspectRatio(
               aspectRatio: 4 / 5,
               child: CachedNetworkImage(
@@ -130,39 +143,31 @@ class _PostMediaState extends ConsumerState<_PostMedia>
                 ),
               ),
             ),
-          );
-
-    return GestureDetector(
-      onDoubleTap: _onDoubleTap,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          media,
-          if (_heartVisible)
-            IgnorePointer(
-              child: AnimatedBuilder(
-                animation: _heartCtrl,
-                builder: (context, _) {
-                  final t = _heartCtrl.value;
-                  final scale = _heartScale(t);
-                  final opacity = _heartOpacity(t);
-                  return Transform.scale(
-                    scale: scale,
-                    child: Opacity(
-                      opacity: opacity,
-                      child: const Icon(
-                        Icons.favorite,
-                        color: Colors.white,
-                        size: 96,
-                        shadows: [Shadow(color: Colors.black38, blurRadius: 12)],
-                      ),
+          ),
+        if (_heartVisible)
+          IgnorePointer(
+            child: AnimatedBuilder(
+              animation: _heartCtrl,
+              builder: (context, _) {
+                final t = _heartCtrl.value;
+                return Transform.scale(
+                  scale: _heartScale(t),
+                  child: Opacity(
+                    opacity: _heartOpacity(t),
+                    child: const Icon(
+                      Icons.favorite,
+                      color: Colors.white,
+                      size: 96,
+                      shadows: [
+                        Shadow(color: Colors.black38, blurRadius: 12),
+                      ],
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
-        ],
-      ),
+          ),
+      ],
     );
   }
 
@@ -182,8 +187,9 @@ class _PostMediaState extends ConsumerState<_PostMedia>
 
 class _CarouselMedia extends StatefulWidget {
   final List<String> imageUrls;
+  final VoidCallback? onDoubleTap;
 
-  const _CarouselMedia({required this.imageUrls});
+  const _CarouselMedia({required this.imageUrls, this.onDoubleTap});
 
   @override
   State<_CarouselMedia> createState() => _CarouselMediaState();
@@ -212,6 +218,7 @@ class _CarouselMediaState extends State<_CarouselMedia> {
             onPageChanged: (page) => setState(() => _currentPage = page),
             itemBuilder: (context, index) {
               return PinchZoomOverlay(
+                onDoubleTap: widget.onDoubleTap,
                 child: CachedNetworkImage(
                   imageUrl: widget.imageUrls[index],
                   fit: BoxFit.cover,
@@ -282,9 +289,19 @@ class _PostActions extends ConsumerStatefulWidget {
 }
 
 class _PostActionsState extends ConsumerState<_PostActions>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final AnimationController _likeCtrl;
   late final Animation<double> _likeScale;
+  late final AnimationController _saveCtrl;
+  late final Animation<double> _saveScale;
+
+  static Animation<double> _buildBounceAnim(AnimationController ctrl) {
+    return TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.45), weight: 40),
+      TweenSequenceItem(tween: Tween(begin: 1.45, end: 0.85), weight: 30),
+      TweenSequenceItem(tween: Tween(begin: 0.85, end: 1.0), weight: 30),
+    ]).animate(CurvedAnimation(parent: ctrl, curve: Curves.easeInOut));
+  }
 
   @override
   void initState() {
@@ -293,22 +310,29 @@ class _PostActionsState extends ConsumerState<_PostActions>
       vsync: this,
       duration: const Duration(milliseconds: 350),
     );
-    _likeScale = TweenSequence<double>([
-      TweenSequenceItem(tween: Tween(begin: 1.0, end: 1.45), weight: 40),
-      TweenSequenceItem(tween: Tween(begin: 1.45, end: 0.85), weight: 30),
-      TweenSequenceItem(tween: Tween(begin: 0.85, end: 1.0), weight: 30),
-    ]).animate(CurvedAnimation(parent: _likeCtrl, curve: Curves.easeInOut));
+    _saveCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 350),
+    );
+    _likeScale = _buildBounceAnim(_likeCtrl);
+    _saveScale = _buildBounceAnim(_saveCtrl);
   }
 
   @override
   void dispose() {
     _likeCtrl.dispose();
+    _saveCtrl.dispose();
     super.dispose();
   }
 
   void _toggleLike() {
     ref.read(feedProvider.notifier).toggleLike(widget.post.id);
     _likeCtrl.forward(from: 0);
+  }
+
+  void _toggleSave() {
+    ref.read(feedProvider.notifier).toggleSave(widget.post.id);
+    _saveCtrl.forward(from: 0);
   }
 
   @override
@@ -341,11 +365,13 @@ class _PostActionsState extends ConsumerState<_PostActions>
           ),
           const Spacer(),
           GestureDetector(
-            onTap: () =>
-                ref.read(feedProvider.notifier).toggleSave(widget.post.id),
-            child: Icon(
-              widget.post.isSaved ? Icons.bookmark : Icons.bookmark_border,
-              size: 28,
+            onTap: _toggleSave,
+            child: ScaleTransition(
+              scale: _saveScale,
+              child: Icon(
+                widget.post.isSaved ? Icons.bookmark : Icons.bookmark_border,
+                size: 28,
+              ),
             ),
           ),
         ],
